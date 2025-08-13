@@ -86,20 +86,22 @@ for (data_type in names(df_list)) {
     hrs_df$param <- rep('hrs_after_OP', nrow(hrs_df))
     hrs_df$var <- rep(var, nrow(hrs_df))
 
-    age_df <- as.data.frame(df %>%
-                              group_by(treatment_word, day, age_group) %>%
-                              summarize(mean = mean(val),
-                                        median = median(val),
-                                        SE = std.error(val),
-                                        CI.L  = confint(lm(val ~ 1), level=0.95)[1,1],
-                                        CI.U = confint(lm(val ~ 1), level=0.95)[1,2]))
-    age_df$group <- age_df$age_group
-    age_df$age_group <- NULL
-    age_df$data_type <- rep(data_type, nrow(age_df))
-    age_df$param <- rep('patient_age', nrow(age_df))
-    age_df$var <- rep(var, nrow(age_df))
+    # age_df <- as.data.frame(df %>%
+    #                           group_by(treatment_word, day, age_group) %>%
+    #                           summarize(mean = mean(val),
+    #                                     median = median(val),
+    #                                     SE = std.error(val),
+    #                                     CI.L  = confint(lm(val ~ 1), level=0.95)[1,1],
+    #                                     CI.U = confint(lm(val ~ 1), level=0.95)[1,2]))
+    # age_df$group <- age_df$age_group
+    # age_df$age_group <- NULL
+    # age_df$data_type <- rep(data_type, nrow(age_df))
+    # age_df$param <- rep('patient_age', nrow(age_df))
+    # age_df$var <- rep(var, nrow(age_df))
 
     fig4_complete <- rbind(fig4_complete, hrs_df, age_df)
+    fig4_complete <- rbind(fig4_complete, hrs_df)
+    
   }
 }
 

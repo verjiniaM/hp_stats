@@ -10,7 +10,7 @@ library(tidyverse)
 library(openxlsx)
 library(r2glmm)
 
-setwd('/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/code/R/human_slice/')
+setwd('/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/code/R/human_slice/hp_stats/')
 source("funcs_human_stats.R")
 
 data_dir = '/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/results/human/paper_figs_collected_checked/data/'
@@ -97,7 +97,6 @@ save_dir <- '/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/results/human/paper_f
 # write.xlsx(ais_anova_df, paste(save_dir, 'AIS_model_comaprisons_intrinsic_.xlsx',sep = ''))
 # write.xlsx(R_sq, paste(save_dir, 'AIS_explained_variance.xlsx',sep = ''))
 
-
 ## MEA SIMPLE ANALYSIS ####
 df_mea <- fread(paste(data_dir, 'summary_pMEA_r.csv', sep = ''), sep = ",")
 
@@ -106,18 +105,28 @@ df_mea$treatment_r <- df_mea$treatment # incubation solution
 df_mea$treatment_r <- ifelse(df_mea$treatment == "Ctrl", 0, 1)
 df_mea <- df_mea[!is.na(df_mea[["value"]]), ]
 df_mea$value_org <- df_mea$value
-df_mea = df_mea %>%
-  mutate(value = scale(value))
+df_mea$value <- as.vector(scale(df_mea$value))
+attrs <- attributes(scale(df_mea$value))
 
+emm_df <- data.frame()
+emm_CI_df <- data.frame()
 mea_anova_results <- data.frame()
 mea_R_sq <- data.frame()
 
 mea_anova_results <- get_results_anova_model_comparison(lmers_mea_simple(df_mea),
                                                         mea_anova_results, 'slice', 'spikes/electrode(log)', 'trVScondition')
 
+MEAshortModel <- lmer(value ~ treatment_r+ (1|OP),data = df_mea, REML = FALSE)
+MEA_r2 <- r2beta(MEAshortModel)
+MEA_short_R_sq <- data.frame(
+  DV = rep('spikes/electrode(log)',4 ),
+  param = MEA_r2$Effect,
+  R_squared = MEA_r2$Rsq,
+  upper_CL = MEA_r2$upper.CL,
+  lower_CL = MEA_r2$lower.CL)
+
 MEAFullModel <- lmer(value ~ treatment_r * patient_age + (1|OP),
                       data = df_mea, REML = FALSE)
-
 MEA_r2 <- r2beta(MEAFullModel)
 MEA_R_sq <- data.frame(
   DV = rep('spikes/electrode(log)',4 ),
@@ -126,8 +135,24 @@ MEA_R_sq <- data.frame(
   upper_CL = MEA_r2$upper.CL,
   lower_CL = MEA_r2$lower.CL)
 
-# write.xlsx(mea_anova_results, paste(save_dir, 'MEA_model_comaprisons_intrinsic_.xlsx',sep = ''))
-# write.xlsx(MEA_R_sq, paste(save_dir, 'MEA_explained_variance.xlsx',sep = ''))
+EMMS_short <- marg_effects_mea(df_mea, 'mea slice', attrs, emm_df, emm_CI_df)
+emm_df <- EMMS_short$df_emmeans
+emm_CI_df <- EMMS_short$df_CIs
+
+wb <- createWorkbook()
+addWorksheet(wb, "short_model_")
+writeData(wb, "short_model_", mea_anova_results)
+addWorksheet(wb, "short_emmeans_")
+writeData(wb, "short_emmeans_", emm_df)
+addWorksheet(wb, "short_emmeans_CIs")
+writeData(wb, "short_emmeans_CIs", emm_CI_df)
+addWorksheet(wb, "short_explained_variance")
+writeData(wb, "short_explained_variance", MEA_short_R_sq)
+addWorksheet(wb, "ext_explained_variance")
+writeData(wb, "ext_explained_variance", MEA_R_sq)
+
+saveWorkbook(wb, file = paste(save_dir, "MEA_complete.xlsx", sep = ''))
+
 
 ### MEA - unnecessary=ily complicated
 # df_mea <- fread(paste(data_dir, 'summary_pMEA_R.csv', sep = ''), sep = ",")

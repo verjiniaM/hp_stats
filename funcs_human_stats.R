@@ -488,6 +488,29 @@ lmers_extended_2 <- function(df, var, id2, data_type) {
     full_vs_interact_null = anova_full_interact_0))
 }
 
+lmers_extended_hrs_only <- function(df, var, data_type) {
+  # make positive
+  if (mean(df[[var]], na.rm = TRUE) < 0) {
+    df[[var]] = -df[[var]] 
+  }
+  #remove rows with nan values
+  df <- df[!is.na(df[[var]]), ]
+  
+  formula_full <- as.formula(paste(var, "~  hrs_after_OP + (1|OP) + (1|OP:", data_type, ")"))
+  # formula_tr_0 <- as.formula(paste(var, "~ hrs_after_OP + (1|OP) + (1|OP:", data_type, ")"))
+  formula_hrs_0 <- as.formula(paste(var, "~ (1|OP) + (1|OP:", data_type, ")"))
+
+  FullModel <-    lmer(formula_full, data = df, REML = FALSE)
+  # TrtNullModel <- lmer(formula_tr_0, data = df, REML = FALSE)
+  IncNullModel <- lmer(formula_hrs_0, data = df, REML = FALSE)
+  
+  #anova_full_tr_0 <- anova(FullModel, TrtNullModel)
+  anova_full_inc_0 <- anova(FullModel, IncNullModel)
+  
+  return(list(full_vs_inc_null = anova_full_inc_0)) 
+    # full_vs_treat_null = anova_full_tr_0))
+}
+
 glmers_extended_2 <- function(df, var, id2, data_type) {
   # make positive
   if (mean(df[[var]], na.rm = TRUE) < 0) {
@@ -806,6 +829,17 @@ glmers_mea <- function(df) {
 }
 
 lmers_mea_simple <- function(df) {
+  FullModel <- lmer(value ~  treatment_r + (1|OP),
+                    data = df, REML = FALSE)
+  TreatmentNullModel <- lmer(value ~  (1|OP),
+                             data = df, REML = FALSE)
+  
+  anova_full_tr_0 <- anova(FullModel, TreatmentNullModel)
+
+  return(list(full_vs_treat_null = anova_full_tr_0))
+}
+
+lmers_mea_extended <- function(df) {
   FullModel <- lmer(value ~  treatment_r * patient_age  + (1|OP),
                      data = df, REML = FALSE)
   TreatmentNullModel <- lmer(value ~ patient_age  + (1|OP),
@@ -978,7 +1012,23 @@ df_ext_comparison_groups_inc_only <- function(df){
       org_hrs_after_OP >= 10 & org_hrs_after_OP <= 14.999 ~ 15, # short
       org_hrs_after_OP >= 15 & org_hrs_after_OP <= 19.999 ~ 20, # middle
       org_hrs_after_OP >= 20 & org_hrs_after_OP <= 24.999 ~ 25,
-      org_hrs_after_OP >= 25 & org_hrs_after_OP <= 32 ~ 30)) # long
+      org_hrs_after_OP >= 25 & org_hrs_after_OP <= 35 ~ 30)) # long
+  
+  df$hrs_group <- as.numeric(df$hrs_group)
+  return(df)
+}
+
+df_hrs_groups_all_slice <- function(df){
+  # have treatment as a word
+  df$treatment_word <- ifelse(df$treatment_r == 0, 'CTR', 'HiK')
+  
+  df <- df %>%
+    mutate(hrs_group = case_when(
+      org_hrs_after_OP >= 5 & org_hrs_after_OP <= 14.999 ~ 10,
+      org_hrs_after_OP >= 15 & org_hrs_after_OP <= 24.999 ~ 20, # short
+      org_hrs_after_OP >= 25 & org_hrs_after_OP <= 34.999 ~ 30, # middle
+      org_hrs_after_OP >= 35 & org_hrs_after_OP <= 44.999 ~ 40,
+      org_hrs_after_OP >= 45 & org_hrs_after_OP <= 51 ~ 47)) # long
   
   df$hrs_group <- as.numeric(df$hrs_group)
   return(df)
@@ -1049,6 +1099,8 @@ get_results_df_r2 <- function(df, r2_df, data_type, var, param){
     formula_full <- as.formula(paste(var, "~ treatment_r + hrs_after_OP + (1|OP)"))
   } else if (param == 'firing_ext_inc_only'){
     formula_full <- as.formula(paste("VAL ~ inj_current + treatment_r + hrs_after_OP + (1|OP)"))
+  } else if (param == 'slice_all_CTR'){
+    formula_full <- as.formula(paste(var, "~ hrs_after_OP + (1|OP) + (1|OP:", data_type, ")"))
   }
   
   
@@ -1325,6 +1377,56 @@ marg_effects_intr_ext_no_pat_age <- function(df, data_type, var, var_org, attrs,
     df_CIs = emm_CI_df))
 }
 
+marg_effects_intr_hrs_only <- function(df, var, var_org, attrs, emm_df, emm_CI_df){
+  
+  # create groups of hours of incubation
+  df <- df_hrs_groups_all_slice(df)
+
+  formula_full <- as.formula(paste(var, "~ hrs_group + (1|OP) + (1|OP:slice)"))
+  FullModel <- lmer(formula_full, data = df, control =  lmerControl(optimizer = "Nelder_Mead"))
+  
+  # Post-hoc analysis with Estimated Marginal Means ####
+  MarginalEffects <- emmeans(object = FullModel, 
+                             specs =  ~ hrs_group,
+                             type="response", tran = "log",
+                             at = list(hrs_group = c(10, 30, 47))) #log transforms
+  
+  #plot(MarginalEffects)
+  ContrastMatrix <- diag(3)
+  gr_hrs <- MarginalEffects@grid$hrs_group
+  
+  ### Contrast and adjustment for multiple testing (Benjamini-Hochberg) ####
+  MarginalEffect_tr_test <- contrast(object = MarginalEffects, type = "response",
+                                     method = list("(Ctrl 10 hrs) / (Ctrl 30hrs)" = ContrastMatrix[gr_hrs==10,] - ContrastMatrix[gr_hrs==30,],
+                                                   "(Ctr 10 hrs) / (Ctrl 47 hrs)" = ContrastMatrix[gr_hrs==10,] - ContrastMatrix[gr_hrs==47,]),
+                                     adjust="BH")
+  
+  m_effects <- summary(MarginalEffects)
+  emm_df <- rbind(emm_df , data.frame(
+    data_type = rep("slice all CTR", length(m_effects$hrs_group)),
+    IV =  m_effects$hrs_group, 
+    DV = rep(var, length(m_effects$hrs_group)),
+    response = m_effects$response * (attrs$'scaled:scale') + attrs$'scaled:center',
+    SE = m_effects$SE * (attrs$'scaled:scale') + attrs$'scaled:center',
+    lower_CI =  m_effects$lower.CL * (attrs$'scaled:scale') + attrs$'scaled:center',
+    upper_CI =  m_effects$upper.CL * (attrs$'scaled:scale') + attrs$'scaled:center'))
+  
+  m_contrasts <- summary(MarginalEffect_tr_test)
+  emm_CI_df <- rbind(emm_CI_df, data.frame(
+    data_type = rep("slice all CTR", length(m_contrasts$contrast)),
+    IV = rep('day', length(m_contrasts$contrast)), #repeat as long as the contrasts are
+    DV = rep(var, length(m_contrasts$contrast)),
+    ratio = m_contrasts$ratio,
+    contrast = m_contrasts$contrast,
+    se = m_contrasts$SE * (attrs$'scaled:scale') + attrs$'scaled:center',
+    p_vales = m_contrasts$p.value))
+  
+  return(list(
+    df_emmeans = emm_df, 
+    df_CIs = emm_CI_df))
+}
+
+
 ### FUNCS FOR INC ONLY ####
 
 lmers_slice_inc_only <- function(df, var) {
@@ -1430,6 +1532,49 @@ marg_effects_intr_short_inc_only <- function(df, data_type, var, var_org, attrs,
     df_emmeans = emm_df, 
     df_CIs = emm_CI_df))
 }
+
+marg_effects_mea <- function(df, data_type, attrs, emm_df, emm_CI_df){
+  
+  formula_full <- as.formula(paste("value ~ treatment_r + (1|OP)"))
+  FullModel <- lmer(formula_full, data = df)
+  
+  # Post-hoc analysis with Estimated Marginal Means ####
+  MarginalEffects <- emmeans(object = FullModel, 
+                             specs =  ~ treatment_r,
+                             type="response", tran = "log") #log transforms
+  
+  #plot(MarginalEffects)
+  ContrastMatrix <- diag(2)
+  gr_tr <- MarginalEffects@grid$treatment_r
+  
+  ### Contrast and adjustment for multiple testing (Benjamini-Hochberg) ####
+  MarginalEffect_tr_test <- contrast(object = MarginalEffects, type = "response",
+                                     method = list("(Ctrl) / (high K)" = ContrastMatrix[gr_tr==0,] - ContrastMatrix[gr_tr==1,]),
+                                     adjust="BH")
+  
+  m_effects <- summary(MarginalEffects)
+  emm_df <- rbind(emm_df , data.frame(
+    data_type = rep(data_type, length(m_effects$treatment_r)),
+    treatment =  m_effects$treatment_r,
+    response = m_effects$response * (attrs$'scaled:scale') + attrs$'scaled:center',
+    SE = m_effects$SE * (attrs$'scaled:scale') + attrs$'scaled:center',
+    lower_CI =  m_effects$lower.CL * (attrs$'scaled:scale') + attrs$'scaled:center',
+    upper_CI =  m_effects$upper.CL * (attrs$'scaled:scale') + attrs$'scaled:center'))
+  
+  m_contrasts <- summary(MarginalEffect_tr_test)
+  emm_CI_df <- rbind(emm_CI_df, data.frame(
+    data_type = rep(data_type, length(m_contrasts$contrast)),
+    ratio = m_contrasts$ratio,
+    contrast = m_contrasts$contrast,
+    se = m_contrasts$SE * (attrs$'scaled:scale') + attrs$'scaled:center',
+    p_vales = m_contrasts$p.value))
+  
+  
+  return(list(
+    df_emmeans = emm_df, 
+    df_CIs = emm_CI_df))
+}
+
 
 marg_effects_intr_ext_inc_only <- function(df, data_type, var, var_org, attrs, emm_df, emm_CI_df){
   df$treatment_r <- ifelse(df$treatment == "Ctrl", 0, 1)
