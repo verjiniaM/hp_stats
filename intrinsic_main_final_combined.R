@@ -64,49 +64,7 @@ for (data_type in names(df_list)) {
   }
 }
 
-# getting dfs for CIs
-fig4_complete <- data.frame()
-for (data_type in names(df_list)) {
-  df <- df_list[[data_type]]
-  df[[data_type]] <- factor(df[[data_type]])
-  df <- df_ext_comparison_groups(df)
-  for (var in names(distribution_dict)) {
-    df$val <- df[[var]]
-    df <- df[!is.na(df[[var]]), ]
-    hrs_df <- as.data.frame(df %>%
-                              group_by(treatment_word, day, hrs_group) %>%
-                              summarize(mean = mean(val),
-                                        median = median(val),
-                                        SE = std.error(val),
-                                        CI.L = confint(lm(val ~ 1), level=0.95)[1,1],
-                                        CI.U = confint(lm(val ~ 1), level=0.95)[1,2]))
-    hrs_df$group <- hrs_df$hrs_group
-    hrs_df$hrs_group <- NULL
-    hrs_df$data_type <- rep(data_type, nrow(hrs_df))
-    hrs_df$param <- rep('hrs_after_OP', nrow(hrs_df))
-    hrs_df$var <- rep(var, nrow(hrs_df))
-
-    # age_df <- as.data.frame(df %>%
-    #                           group_by(treatment_word, day, age_group) %>%
-    #                           summarize(mean = mean(val),
-    #                                     median = median(val),
-    #                                     SE = std.error(val),
-    #                                     CI.L  = confint(lm(val ~ 1), level=0.95)[1,1],
-    #                                     CI.U = confint(lm(val ~ 1), level=0.95)[1,2]))
-    # age_df$group <- age_df$age_group
-    # age_df$age_group <- NULL
-    # age_df$data_type <- rep(data_type, nrow(age_df))
-    # age_df$param <- rep('patient_age', nrow(age_df))
-    # age_df$var <- rep(var, nrow(age_df))
-
-    fig4_complete <- rbind(fig4_complete, hrs_df, age_df)
-    fig4_complete <- rbind(fig4_complete, hrs_df)
-    
-  }
-}
-
 save_dir <- '/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/results/human/paper_figs_collected_checked/stats/'
-write.xlsx(fig4_complete, paste(save_dir, 'sum_data_age_hrs_', area,'.xlsx',sep = ''))
 
 wb <- createWorkbook()
 addWorksheet(wb, "short_model_")

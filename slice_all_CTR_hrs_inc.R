@@ -80,7 +80,8 @@ distribution_dict <- list(
 ext_anova_model_comp_df <- data.frame()
 emm_df <- data.frame()
 emm_CI_df <- data.frame()
-R_sq_hrs <- data.frame()
+R_sq <- data.frame()
+fig4_complete <- data.frame()
 
 df <- df_slice_ctr
 df$slice <- factor(df$slice)
@@ -90,6 +91,7 @@ for (var in names(distribution_dict)) {
   print(paste('starting analysis of ', var))
   # saving org var; scaling var for better convergence
   var_org <- df[[var]]
+  df <- df[!is.na(df[[var]]), ]
   attrs <- attributes(scale(df[[var]]))
   df[[var]] <- as.vector(scale(df[[var]]))
   
@@ -100,9 +102,39 @@ for (var in names(distribution_dict)) {
   emm_df <- EMMS_short$df_emmeans
   emm_CI_df <- EMMS_short$df_CIs
   
+  R_sq <- get_results_df_r2(df, R_sq, 'slice', var, 'slice_all_CTR')
+}
+
+# getting dfs for CIs
+fig4_complete <- data.frame()
+
+
+df_fig <- df_slice_ctr
+df_fig$slice <- factor(df_fig$slice)
+df_fig <- fix_df_slice_repatch(df_fig)
+df_fig <- df_hrs_groups_all_slice(df_fig)
+
+for (var in names(distribution_dict)) {
+  df_fig$val <- df_fig[[var]]
+  df_fig <- df_fig[!is.na(df_fig[[var]]), ]
+  hrs_df <- as.data.frame(df_fig %>%
+                            group_by(treatment_word, day, hrs_group) %>%
+                            summarize(mean = mean(val),
+                                      median = median(val),
+                                      SE = std.error(val),
+                                      CI.L = confint(lm(val ~ 1), level=0.95)[1,1],
+                                      CI.U = confint(lm(val ~ 1), level=0.95)[1,2]))
+  hrs_df$group <- hrs_df$hrs_group
+  hrs_df$hrs_group <- NULL
+  hrs_df$data_type <- rep('slice_all_CTR', nrow(hrs_df))
+  hrs_df$param <- rep('hrs_after_OP', nrow(hrs_df))
+  hrs_df$var <- rep(var, nrow(hrs_df))
+  
+  fig4_complete <- rbind(fig4_complete, hrs_df)
 }
 
 save_dir <- '/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/results/human/paper_figs_collected_checked/stats/'
+write.xlsx(fig4_complete, paste(save_dir, 'for_plot/sum_data_slice_CTR_hrs.xlsx',sep = ''))
 
 wb <- createWorkbook()
 addWorksheet(wb, "hrs_model_slice_CTR")
@@ -111,7 +143,8 @@ addWorksheet(wb, "hrs_emmeans_")
 writeData(wb, "hrs_emmeans_", emm_df)
 addWorksheet(wb, "hrs_emmeans_CIs")
 writeData(wb, "hrs_emmeans_CIs", emm_CI_df)
-
+addWorksheet(wb, "hrs_expl_var")
+writeData(wb, "hrs_expl_var", R_sq)
 saveWorkbook(wb, file = paste(save_dir, "hrs_after_OP_slice_CTR.xlsx", sep = ''))
 
 plot_save <- '/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/results/human/paper_figs_collected_checked/figures/draft4_figs/from_r_for_comparison/'
