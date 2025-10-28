@@ -118,7 +118,7 @@ for (var in names(distribution_dict)) {
   df_fig$val <- df_fig[[var]]
   df_fig <- df_fig[!is.na(df_fig[[var]]), ]
   hrs_df <- as.data.frame(df_fig %>%
-                            group_by(treatment_word, day, hrs_group) %>%
+                            group_by(hrs_group) %>%
                             summarize(mean = mean(val),
                                       median = median(val),
                                       SE = std.error(val),

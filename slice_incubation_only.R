@@ -7,7 +7,7 @@ library(tidyverse)
 library(openxlsx)
 library(r2glmm)
 
-setwd('/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/code/R/human_slice/')
+setwd('/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/code/R/human_slice/hp_stats/')
 source("funcs_human_stats.R")
 
 data_dir = '/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/results/human/paper_figs_collected_checked/data/'
@@ -23,13 +23,24 @@ df_slice_inc_only_f <- df_slice_inc_only_f[df_slice_inc_only_f$hrs_after_OP < ma
 df_slice_inc_only_f <- df_slice_inc_only_f[nchar(df_slice_inc_only_f$slice) <= 2, ]
 
 ### INTRINSIC PROPERTIES ####
+# distribution_dict <- list(
+#   'TH' = 'gamma',
+#   # 'rheo_ramp_c' = 'gaussian',
+#   'sag' = 'gaussian',
+#   'membra_time_constant_tau' = 'gaussian',
+#   'resting_potential' = 'gamma',
+#   'Rin' = 'gamma')
+# 
+# distribution_dict <- list(
+#   'AP_heigth' = 'gamma',
+#   'max_repol' = 'gaussian',
+#   'max_depol' = 'gaussian',
+#   'AP_halfwidth' = 'gamma')
+
 distribution_dict <- list(
-  'TH' = 'gamma',
-  # 'rheo_ramp_c' = 'gaussian',
-  'sag' = 'gaussian',
-  'membra_time_constant_tau' = 'gaussian',
-  'resting_potential' = 'gamma',
-  'Rin' = 'gamma')
+  'membra_time_constant_tau' = 'gamma',
+  'resting_potential' = 'gaussian',
+  'cap_adj' = 'gaussian')
 
 short_anova_model_comp_df <- data.frame()
 ext_anova_model_comp_df <- data.frame()
@@ -115,7 +126,8 @@ for (var_firing in var_of_interest) {
 }
 
 ### SAVING STUFF ####
-save_dir <- '/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/results/human/paper_figs_collected_checked/stats/inc_only/'
+# save_dir <- '/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/results/human/paper_figs_collected_checked/stats/inc_only/'
+save_dir <- '/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/results/human/paper_figs_collected_checked/figures/all_params_reference/add/'
 
 # save the comparison table
 # write.xlsx(anova_comp_df, paste(save_dir, 'model_com_slice_all_', area,'.xlsx',sep = ''))
@@ -157,7 +169,7 @@ addWorksheet(wb_fire, "exlp_var_short")
 writeData(wb_fire, "exlp_var_short", R_sq_short)
 addWorksheet(wb_fire, "exlp_var_ext")
 writeData(wb_fire, "exlp_var_ext", R_sq_ext)
-saveWorkbook(wb_fire, file = paste(save_dir, "inc_only_firing_to_",max_hrs_after_op,".xlsx", sep = ''))
+# saveWorkbook(wb_fire, file = paste(save_dir, "inc_only_firing_to_",max_hrs_after_op,".xlsx", sep = ''))
 
 
 # ### comparisons to find last hrs incubation no change ####

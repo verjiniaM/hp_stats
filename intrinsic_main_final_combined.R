@@ -10,7 +10,7 @@ library(tidyverse)
 library(openxlsx)
 library(r2glmm)
 
-setwd('/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/code/R/human_slice/')
+setwd('/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/code/R/human_slice/hp_stats/')
 source("funcs_human_stats.R")
 
 data_dir = '/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/results/human/paper_figs_collected_checked/data/'
@@ -18,13 +18,31 @@ area <- 'temporal' # or 'complete'
 df_repatch <- fread(paste(data_dir, 'repatch_data_', area,'.csv', sep = ''), sep = ",")
 df_slice <- fread(paste(data_dir, 'slice_data_', area,'.csv', sep = ''), sep = ",")
 
+# slice
+df_slice <- df_slice[df_slice$AP_heigth > 50, ]
+df_slice <- df_slice[df_slice$AP_halfwidth < 1.65, ]
+
+# repatch
+df_repatch <- df_repatch[df_repatch$AP_halfwidth < 1.9, ]
+
+# distribution_dict <- list(
+#   'TH' = 'gamma',
+#   'rheo_ramp_c' = 'gaussian',
+#   'sag' = 'gaussian',
+#   'membra_time_constant_tau' = 'gaussian',
+#   'resting_potential' = 'gamma',
+#   'Rin' = 'gamma')
+
+# distribution_dict <- list(
+#   'AP_heigth' = 'gamma',
+#   'max_repol' = 'gaussian',
+#   'max_depol' = 'gaussian',
+#   'AP_halfwidth' = 'gamma')
+
 distribution_dict <- list(
-  'TH' = 'gamma',
-  'rheo_ramp_c' = 'gaussian',
-  'sag' = 'gaussian',
-  'membra_time_constant_tau' = 'gaussian',
-  'resting_potential' = 'gamma',
-  'Rin' = 'gamma')
+  'membra_time_constant_tau' = 'gamma',
+  'resting_potential' = 'gaussian',
+  'cap_adj' = 'gaussian')
 
 short_anova_model_comp_df <- data.frame()
 ext_anova_model_comp_df <- data.frame()
@@ -64,7 +82,8 @@ for (data_type in names(df_list)) {
   }
 }
 
-save_dir <- '/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/results/human/paper_figs_collected_checked/stats/'
+# save_dir <- '/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/results/human/paper_figs_collected_checked/stats/'
+save_dir <- '/Users/verjim/laptop_D_17.01.2022/Schmitz_lab/results/human/paper_figs_collected_checked/figures/all_params_reference/add/'
 
 wb <- createWorkbook()
 addWorksheet(wb, "short_model_")

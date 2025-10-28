@@ -976,6 +976,46 @@ get_melt_df_firing <- function(var_firing, df, ids){
   return(melt_df) 
 }
 
+get_melt_df_firing_all_inj <- function(var_firing, df, ids){
+  setnames(df, colnames(df), make.names(colnames(df)))
+  # get inj column names
+  col_names_inj <- grep(var_firing, colnames(df), value = TRUE) # all relevant column names
+  
+  # create new col_names
+  new_col_names <- c()
+  for (name in col_names_inj){
+    
+    stop_at <- nchar(name) - 15
+    new_name <- substr(name, 4, stop_at)
+    
+    if (var_firing == 'IFF'){
+      stop_at <- nchar(name) - 11
+      new_name <- substr(name, 4, stop_at)
+    }
+    
+    if (strsplit(new_name, "")[[1]][1] == '.'){ # if the new name starts with a . --> make it a minus
+      substring(new_name, 1, 1) <- '-'
+    }
+    
+    df[[new_name]] <- df[[name]]
+    new_col_names <- append(new_col_names, new_name, after = length(new_col_names))
+    }
+  
+  col_to_keep <- c(ids, new_col_names)
+  melt_df <- df[, ..col_to_keep]
+  melt_df <- melt(melt_df, id = ids, variable = 'inj_current', value =  var_firing)
+  melt_df$inj_current <- as.numeric(as.character(melt_df$inj_current))
+  
+  # # decidede to keep up to 600 pA
+  # inj_to_keep <- 600
+  # melt_df <- melt_df[inj_current <= inj_to_keep]
+  # 
+  # # remove 0 values, aka where no APs fired
+  # melt_df <- melt_df[melt_df$VAL != 0]
+  
+  return(melt_df) 
+}
+
 df_ext_comparison_groups <- function(df){
   # have treatment as a word
   df$treatment_word <- ifelse(df$treatment_r == 0, 'CTR', 'HiK')
@@ -1071,7 +1111,7 @@ get_results_anova_model_comparison <- function(results, anova_df, data_type, var
     anova_df <-  rbind(anova_df, data.frame(
       data_type = rep(data_type, num_rep),
       DV = rep(var, num_rep),
-      ID2 = rep(id2, num_rep),
+      # D2 = rep(id2, num_rep),
       model_comparison = rownames(results[[name]]),
       logLik = results[[name]][['logLik']],
       deviance = results[[name]][['deviance']],
@@ -1101,7 +1141,11 @@ get_results_df_r2 <- function(df, r2_df, data_type, var, param){
     formula_full <- as.formula(paste("VAL ~ inj_current + treatment_r + hrs_after_OP + (1|OP)"))
   } else if (param == 'slice_all_CTR'){
     formula_full <- as.formula(paste(var, "~ hrs_after_OP + (1|OP) + (1|OP:", data_type, ")"))
+  } else if (param == 'events'){
+    formula_full <- as.formula(paste(var, "~ day + (1|OP) + (1|OP:slice:cell_IDs_match)"))
   }
+
+
   
   
   FullModel <- lmer(formula_full, data = df, control =  lmerControl(optimizer = "Nelder_Mead"))
@@ -1426,6 +1470,101 @@ marg_effects_intr_hrs_only <- function(df, var, var_org, attrs, emm_df, emm_CI_d
     df_CIs = emm_CI_df))
 }
 
+marg_effects_spontan <- function(df, data_type, id2, var, var_org, attrs,emm_df, emm_CI_df){
+  
+  formula_full <- as.formula(paste(var, "~ treatment_r + day + (1|OP) + (1|OP:slice:cell_IDs_match)"))
+  FullModel <- lmer(formula_full, data = df, control =  lmerControl(optimizer = "Nelder_Mead"))
+  
+  if (id2 == ''){
+    # Post-hoc analysis with Estimated Marginal Means ####
+    MarginalEffects <- emmeans(object = FullModel, 
+                               specs =  ~ treatment_r,
+                               type="response", tran = "log",
+                               lmerTest.limit = 20000,
+                               pbkrtest.limit = 20000) #log transforms
+    
+    #plot(MarginalEffects)
+    ContrastMatrix <- diag(2)
+    gr_tr <- MarginalEffects@grid$treatment_r
+    
+    ### Contrast and adjustment for multiple testing (Benjamini-Hochberg) ####
+    MarginalEffect_tr_test <- contrast(object = MarginalEffects, type = "response",
+                                       method = list("(Ctrl) / (high K)" = ContrastMatrix[gr_tr==0,] - ContrastMatrix[gr_tr==1,]),
+                                       adjust="BH")
+    
+    m_effects <- summary(MarginalEffects)
+    emm_df <- rbind(emm_df , data.frame(
+      data_type = rep(data_type, length(m_effects$treatment_r)),
+      DV = rep(var, length(m_effects$treatment_r)),
+      treatment =  m_effects$treatment_r,
+      response = m_effects$response * (attrs$'scaled:scale') + attrs$'scaled:center',
+      SE = m_effects$SE * (attrs$'scaled:scale') + attrs$'scaled:center',
+      lower_CI =  m_effects$lower.CL * (attrs$'scaled:scale') + attrs$'scaled:center',
+      upper_CI =  m_effects$upper.CL * (attrs$'scaled:scale') + attrs$'scaled:center'))
+    
+    m_contrasts <- summary(MarginalEffect_tr_test)
+    emm_CI_df <- rbind(emm_CI_df, data.frame(
+      data_type = rep(data_type, length(m_contrasts$contrast)),
+      IV = rep('day', length(m_contrasts$contrast)), #repeat as long as the contrasts are
+      DV = rep(var, length(m_contrasts$contrast)),
+      ratio = m_contrasts$ratio,
+      contrast = m_contrasts$contrast,
+      se = m_contrasts$SE * (attrs$'scaled:scale') + attrs$'scaled:center',
+      p_vales = m_contrasts$p.value))
+    
+    
+    return(list(
+      df_emmeans = emm_df, 
+      df_CIs = emm_CI_df))
+    
+  } else { #id2 = 'day'
+    # Post-hoc analysis with Estimated Marginal Means ####
+    MarginalEffects <- emmeans(object = FullModel, 
+                               specs =  ~ treatment_r + day,
+                               type="response", tran = "log",
+                               lmerTest.limit = 20000,
+                               pbkrtest.limit = 20000) #log transforms
+    #plot(MarginalEffects)
+    ContrastMatrix <- diag(4)
+    gr_day <- MarginalEffects@grid$day
+    gr_tr <- MarginalEffects@grid$treatment_r
+    
+    ### Contrast and adjustment for multiple testing (Benjamini-Hochberg) ####
+    MarginalEffect_tr_test <- contrast(object = MarginalEffects, type = "response",
+                                       method = list("(Ctrl D1) / (Ctrl D2)" = ContrastMatrix[gr_tr==0&gr_day==0,] - ContrastMatrix[gr_tr==0&gr_day==1,],
+                                                     "(high K D1) / (high K D2)" = ContrastMatrix[gr_tr==0&gr_day==0,] - ContrastMatrix[gr_tr==1&gr_day==1,],
+                                                     "(Ctrl D2) / (high K D2)" = ContrastMatrix[gr_tr==0&gr_day==1,] - ContrastMatrix[gr_tr==1&gr_day==1,]),
+                                       adjust="BH")
+    
+    m_effects <- summary(MarginalEffects)
+    emm_df <- rbind(emm_df , data.frame(
+      data_type = rep(data_type, length(m_effects$day)),
+      # IV =  m_effects$day, 
+      DV = rep(var, length(m_effects$day)),
+      treatment =  m_effects$treatment_r,
+      response = m_effects$response * (attrs$'scaled:scale') + attrs$'scaled:center',
+      SE = m_effects$SE * (attrs$'scaled:scale') + attrs$'scaled:center',
+      lower_CI =  m_effects$lower.CL * (attrs$'scaled:scale') + attrs$'scaled:center',
+      upper_CI =  m_effects$upper.CL * (attrs$'scaled:scale') + attrs$'scaled:center'))
+    
+    
+    m_contrasts <- summary(MarginalEffect_tr_test)
+    emm_CI_df <- rbind(emm_CI_df, data.frame(
+      data_type = rep(data_type, length(m_contrasts$contrast)),
+      IV = rep('day', length(m_contrasts$contrast)), #repeat as long as the contrasts are
+      DV = rep(var, length(m_contrasts$contrast)),
+      ratio = m_contrasts$ratio,
+      contrast = m_contrasts$contrast,
+      se = m_contrasts$SE * (attrs$'scaled:scale') + attrs$'scaled:center',
+      p_vales = m_contrasts$p.value))
+    
+    
+    return(list(
+      df_emmeans = emm_df, 
+      df_CIs = emm_CI_df))
+  }
+
+}
 
 ### FUNCS FOR INC ONLY ####
 
@@ -1641,6 +1780,41 @@ marg_effects_intr_ext_inc_only <- function(df, data_type, var, var_org, attrs, e
     df_CIs = emm_CI_df))
 }
 
+# funcs analysis intrinsic excitability
+lmers_synaptic <- function(df, var, id2) {
+  
+  #remove rows with nan values
+  df <- df[!is.na(df[[var]]), ]
+  
+  if (id2 == ''){
+    formula_full <- as.formula(paste(var, "~ treatment_r + (1|OP) + (1|OP:slice:cell_IDs_match)"))
+    formula_tr_0 <- as.formula(paste(var, "~ (1|OP) + (1|OP:slice:cell_IDs_match)"))
+    
+    FullModel <- lmer(formula_full,data = df, REML = FALSE)
+    TreatmentNullModel <-lmer(formula_tr_0, data = df, REML = FALSE)
+    
+    anova_full_tr_0 <- anova(FullModel, TreatmentNullModel)
+    
+    
+    return(list(full_vs_treat_null = anova_full_tr_0))
+  } else {
+    formula_full <- as.formula(paste(var, "~ treatment_r +", id2, "+ (1|OP) + (1|OP:slice:cell_IDs_match)"))
+    formula_tr_0 <- as.formula(paste(var, "~ ", id2 ," + (1|OP) + (1|OP:slice:cell_IDs_match)"))
+    formula_day_0 <- as.formula(paste(var, "~ treatment_r + (1|OP) + (1|OP:slice:cell_IDs_match)"))
+    
+    FullModel <- lmer(formula_full,data = df, REML = FALSE)
+    TreatmentNullModel <-lmer(formula_tr_0, data = df, REML = FALSE)
+    DayNullModel <- lmer(formula_day_0, data = df, REML = FALSE)
+    
+    anova_full_tr_0 <- anova(FullModel, TreatmentNullModel)
+    anova_full_day_0 <- anova(FullModel, DayNullModel)
+    
+    return(list(
+      full_vs_treat_null = anova_full_tr_0, 
+      full_vs_day_null = anova_full_day_0))
+  }
+}
+
 lmers_firing_inc_only <- function(df, var, id2, data_type) {
   # df$treatment_r <- ifelse(df$treatment == "Ctrl", 0, 1)
   
@@ -1728,6 +1902,109 @@ marg_effects_firing_short_inc_only <- function(df, data_type, var, var_org, attr
 }
 
 
+### Correaltions
+
+pearson_corr <- function(df, params_corr) {
+  
+  # creating empty metrices
+  results <- matrix(NA, length(params_corr), length(params_corr))
+  rownames(results) <- colnames(results) <- params_corr
+  p_vals <- results
+  lower_conf <- results
+  upper_conf <- results
+  
+  for(i in 1:length(params_corr)) {
+    for(j in 1:length(params_corr)) {
+      if (i == j){
+        results[i, j] <- 1
+        p_vals[i, j] <- 1
+      }
+      else {
+        
+        x = params_corr[i]
+        y = params_corr[j]
+        
+        # omitting only relevant missing values
+        relevant_params <- c(x, y)
+        df_model <- df[, ..relevant_params]
+        df_model <- na.omit(df_model)
+        
+        cor <- cor.test(df_model[[y]], df_model[[x]], method = 'pearson')
+        
+        results[i,j] <- cor$estimate
+        p_vals[i, j] <- cor$p.value
+        lower_conf[i, j] <- cor$conf.int[1]
+        upper_conf[i, j] <- cor$conf.int[2]
+      }
+    }
+  }
+
+    return(list(
+      corrs = results, 
+      pvals = p_vals, 
+      l_conf = lower_conf,
+      u_conf = upper_conf))
+}
+
+partial_corr_mixed <- function(df, params_corr, random_effect) {
+  
+  results <- matrix(NA, length(params_corr), length(params_corr))
+  rownames(results) <- colnames(results) <- params_corr
+  
+  for(i in 1:length(params_corr)) {
+    for(j in 1:length(params_corr)) {
+      if (i == j){
+        results[i, j] <- 1
+      }
+      else {
+        
+        x = params_corr[i]
+        y = params_corr[j]
+        
+        # data preparation
+        relevant_params <- c(x, y, 'OP')
+        df_model <- df[, ..relevant_params]
+        df_model <- na.omit(df_model)
+        
+        # scaling data
+        df_model[[x]] <- as.vector(scale(df_model[[x]]))
+        df_model[[y]] <- as.vector(scale(df_model[[y]]))
+        df_model[['OP']] <- factor(df_model[['OP']])
+        
+        # if (data_type == 'incubation'){
+        print(c('analysis of',data_type, 'effect of', x, ' on ', y))
+        
+        # building the model
+        formula_cor <- as.formula(paste(y, "~", x, "+", random_effect))
+        model <- lmer(formula_cor, data = df_model)
+        
+        # the slope equals the correlation because data is scaled
+        # slope = correlation × (SD_y / SD_x)
+        results[i, j] <- summary(model)$coefficients[2, 1] # / (sd(df_model[[y]]) / sd(df_model[[x]]))
+      }
+    }
+  }
+  
+  return(results)
+}
+
+get_layout_matr <- function(n) {
+  # empty amtrix
+  matr <- matrix(0, nrow = n, ncol = n)
+  last <- 0
+  for (m in c(2:n-1)){
+    zeros <- rep(0, m)
+    strt <-last+1
+    stp <- last+n-m
+    nums <- c(strt:stp)
+    
+    col <- c(zeros, nums)
+    last <- col[n]
+    
+    matr[, m] <- col
+  }
+  return(matr)
+}
 #### CALCULATING SUMMARY DF FOR PLOTTING FIRING ####
 # library(plotrix )
 # 
